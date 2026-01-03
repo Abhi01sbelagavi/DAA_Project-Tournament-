@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-theme="dark">
+<body data-theme="light">
   <header>
     <h1>🏏 Cricket Tournament</h1>
       <nav style="display:flex;gap:12px;align-items:center">
@@ -16,7 +16,7 @@
       <a href="points.html">Points Table</a>
       <a href="playoffs.html">Playoffs</a>
       <label class="switch" style="margin-left:8px">
-        <input type="checkbox" id="themeToggle">
+        <input type="checkbox" id="themeToggle" checked>
         <span class="slider"></span>
       </label>
     </nav>
@@ -40,7 +40,6 @@
           <tr>
             <th>#</th>
             <th>Match</th>
-            <th>Venue</th>
             <th>Time</th>
             <th>A Runs</th>
             <th>B Runs</th>
@@ -49,6 +48,13 @@
         </thead>
         <tbody id="matchesTbody"></tbody>
       </table>
+    </section>
+
+    <section>
+      <h3>Order</h3>
+      <div style="display:flex;gap:8px">
+        <button id="randBtn">Randomize Order (no consecutive teams)</button>
+      </div>
     </section>
 
     <section>
