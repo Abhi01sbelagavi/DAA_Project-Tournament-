@@ -237,6 +237,122 @@ function bindScheduling(){
     updateCounts();
   });
   renderMatches();
+  const randBtn = document.getElementById('randBtn');
+  if(randBtn){
+    randBtn.addEventListener('click', ()=>{
+      if(matches.length===0) return alert('No matches to order');
+      const ok = randomizeMatchesNoConsec();
+      saveState(); renderMatches();
+      if(ok) alert('Randomized order assigned (no consecutive teams).');
+      else alert('Could not find a perfect ordering; applied best-effort ordering.');
+    });
+  }
+}
+
+// Attempt to order matches so adjacent matches do not share a team.
+// Uses a time-limited DFS (attempts to find Hamiltonian path in compatibility graph),
+// falling back to a randomized greedy construction if necessary.
+function randomizeMatchesNoConsec(){
+  const n = matches.length;
+  if(n <= 1) return true;
+
+  // compatibility: two matches are compatible if they do NOT share a team
+  const comp = Array.from({length:n}, ()=>[]);
+  for(let i=0;i<n;i++){
+    for(let j=0;j<n;j++){
+      if(i===j) continue;
+      const A = matches[i], B = matches[j];
+      if(A.a !== B.a && A.a !== B.b && A.b !== B.a && A.b !== B.b) comp[i].push(j);
+    }
+  }
+
+  // try DFS/backtracking with time limit
+  const timeLimitMs = 800; // ms
+  const startTime = Date.now();
+  const visited = new Array(n).fill(false);
+  const order = new Array(n);
+  let found = false;
+
+  // order starting nodes by degree descending (heuristic)
+  const starts = Array.from({length:n}, (_,i)=>i).sort((a,b)=> comp[b].length - comp[a].length);
+
+  function dfs(pos, node){
+    if(Date.now() - startTime > timeLimitMs) return false;
+    visited[node] = true; order[pos] = node;
+    if(pos === n-1){ found = true; return true; }
+    // iterate neighbors in random order for diversity
+    const neigh = shuffle(comp[node].slice());
+    for(const nb of neigh){
+      if(found) break;
+      if(!visited[nb]){
+        if(dfs(pos+1, nb)) return true;
+      }
+    }
+    visited[node] = false;
+    return false;
+  }
+
+  for(const s of starts){
+    if(Date.now() - startTime > timeLimitMs) break;
+    for(let i=0;i<n;i++) visited[i]=false;
+    if(dfs(0,s)) break;
+  }
+
+  if(found){
+    matches = order.map(i=>matches[i]);
+    matches.forEach((m,i)=> m.slot = i);
+    return true;
+  }
+
+  // fallback: randomized greedy construction with restarts
+  const attempts = 600;
+  const indices = Array.from({length:n}, (_,i)=>i);
+  for(let t=0;t<attempts;t++){
+    const rem = shuffle(indices.slice());
+    const seq = [];
+    while(rem.length){
+      if(seq.length===0){ seq.push(rem.shift()); continue; }
+      const last = matches[seq[seq.length-1]];
+      const candidates = rem.filter(idx=>{
+        const m = matches[idx];
+        return m.a !== last.a && m.a !== last.b && m.b !== last.a && m.b !== last.b;
+      });
+      if(candidates.length===0) break;
+      const pick = candidates[Math.floor(Math.random()*candidates.length)];
+      rem.splice(rem.indexOf(pick),1);
+      seq.push(pick);
+    }
+    if(seq.length === n){
+      matches = seq.map(i=>matches[i]);
+      matches.forEach((m,i)=> m.slot = i);
+      return true;
+    }
+  }
+
+  // final fallback: greedy minimizing repeats
+  const rem2 = shuffle(indices.slice());
+  const seq2 = [];
+  while(rem2.length){
+    if(seq2.length===0){ seq2.push(rem2.shift()); continue; }
+    const last = matches[seq2[seq2.length-1]];
+    let pos = rem2.findIndex(idx=>{
+      const m = matches[idx];
+      return m.a !== last.a && m.a !== last.b && m.b !== last.a && m.b !== last.b;
+    });
+    if(pos === -1) pos = 0;
+    seq2.push(rem2.splice(pos,1)[0]);
+  }
+  matches = seq2.map(i=>matches[i]);
+  matches.forEach((m,i)=> m.slot = i);
+  return false;
+}
+
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 function generateRoundRobin(){
@@ -246,6 +362,9 @@ function generateRoundRobin(){
       matches.push({a:teams[i].name, b:teams[j].name, venue:'', time:'', aScore:null, bScore:null, done:false});
     }
   }
+  // Shuffle and try to produce an ordering without consecutive-team repeats
+  saveState();
+  randomizeMatchesNoConsec();
   saveState();
 }
 
@@ -265,7 +384,6 @@ function renderMatches(){
           <span style="width:40px;height:40px;border-radius:8px;overflow:hidden;background:#111;display:inline-block">${renderLogoForRow(m.b)}</span>
           <strong>${m.b}</strong>
         </td>
-        <td><input type="text" placeholder="Venue" id="venue${i}" value="${m.venue || ''}"></td>
         <td><input type="time" id="time${i}" value="${m.time || ''}"></td>
         <td><input type="number" placeholder="${m.a} runs" id="a${i}" value="${m.aScore!=null?m.aScore:''}"></td>
         <td><input type="number" placeholder="${m.b} runs" id="b${i}" value="${m.bScore!=null?m.bScore:''}"></td>
@@ -285,7 +403,6 @@ function renderMatches(){
     div.className='match-row';
     div.innerHTML = `
       <div style="flex:1">${m.a} <strong>vs</strong> ${m.b}</div>
-      <input type="text" placeholder="Venue" id="venue${i}" value="${m.venue || ''}">
       <input type="time" id="time${i}" value="${m.time || ''}">
       <input type="number" placeholder="${m.a} runs" id="a${i}" value="${m.aScore!=null?m.aScore:''}">
       <input type="number" placeholder="${m.b} runs" id="b${i}" value="${m.bScore!=null?m.bScore:''}">
@@ -296,17 +413,25 @@ function renderMatches(){
 }
 
 function saveMatch(i){
-  const venue = document.getElementById('venue'+i).value;
   const time = document.getElementById('time'+i).value;
   const a = document.getElementById('a'+i).value;
   const b = document.getElementById('b'+i).value;
   if(a === '' || b === ''){
-    // allow saving just venue/time
-    matches[i].venue = venue; matches[i].time = time; saveState(); renderMatches(); updateCounts(); return;
+    // allow saving just time
+    matches[i].time = time; saveState(); renderMatches(); updateCounts(); return;
   }
   const aNum = +a; const bNum = +b;
   if(isNaN(aNum) || isNaN(bNum)) return alert('Enter valid numeric scores');
-  matches[i].venue = venue; matches[i].time = time; matches[i].aScore = aNum; matches[i].bScore = bNum; matches[i].done = true;
+  matches[i].time = time; matches[i].aScore = aNum; matches[i].bScore = bNum; matches[i].done = true;
+  // clear time from other matches that would conflict for same teams
+  const cur = matches[i];
+  for(let j=0;j<matches.length;j++){
+    if(j===i) continue;
+    const m = matches[j];
+    if(m.time === time && (m.a === cur.a || m.a === cur.b || m.b === cur.a || m.b === cur.b)){
+      m.time = '';
+    }
+  }
   saveState(); renderMatches(); updateCounts();
   if(document.getElementById('pointsBody')) renderPoints();
 }
