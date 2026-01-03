@@ -131,4 +131,3 @@ header nav a:hover::after{transform:translateX(0);}
 /* mini floating badge animation for icons */
 .badge-3d{will-change:transform}
 .badge-3d:hover{transform:translateY(-6px) rotateX(6deg)}
-
